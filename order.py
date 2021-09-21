@@ -6,7 +6,6 @@ from urllib.parse import urlencode
 import time
 import jwt
 import requests
-import atexit
 from constant import *
 
 class ORDER:
@@ -168,26 +167,34 @@ def price_search_minute(market):
 def volume_check(response, pivot):
     global account_markets
     infos = response.json()
-    market = infos[0]['market']
+    market = infos[-1]['market']
+
+    # print(market, float(infos[-1]['candle_acc_trade_price']))
+
     increasing = True if (infos[0]['trade_price'] > infos[0]['opening_price']) else False
     vol_list, price_list = [], []
     for info in infos:
         vol_list.append(info['candle_acc_trade_volume'])
         price_list.append(info['high_price'])
         price_list.append(info['low_price'])
-    MIN_VOL = min(vol_list[1:])        #마지막 vol 일부분만 집계 돼서 MIN에선 제외
-    RECENT_VOL = infos[0]['candle_acc_trade_volume']
+    min_vol = min(vol_list[1:])        #마지막 vol 일부분만 집계 돼서 MIN에선 제외
+    recent_vol = infos[0]['candle_acc_trade_volume']
+    recent_price = infos[0]['low_price']
     if market in account_markets:
-        if (higher_price[market] - (higher_price[market] * LOWER_BOUND_RATE)) > min(price_list):
+        print(market, higher_price[market], (higher_price[market] * LOWER_BOUND_RATE), recent_price)
+        if (higher_price[market] - (higher_price[market] * LOWER_BOUND_RATE)) > recent_price:
             #sell
-            time.sleep(DELAY_TIME)
+            # time.sleep(DELAY_TIME)
             order_info = order(ORDER(market=market, side=SELL, volume=possible_order_search(market)['ask_account']['balance'], ord_type=MARKET_PRICE_SELL))
-            with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['price']}, SELL")
+            with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['locked']}, SELL\n")
             account_markets.remove(market)
         else:
             higher_price[market] = max(higher_price[market], *price_list)
-
-    return (RECENT_VOL > (MIN_VOL * pivot)) and increasing and (float(infos[-1]['candle_acc_trade_price']) > 0.1)
+    satisfy_price_vol = False
+    # 평균 888,000,000 , 0.11
+    if market[:3] == 'KRW' and (float(infos[-1]['candle_acc_trade_price']) > 770000000): satisfy_price_vol = True
+    if market[:3] == 'BTC' and (float(infos[0]['candle_acc_trade_price']) > 0.3): satisfy_price_vol = True
+    return (recent_vol > (min_vol * pivot)) and increasing and satisfy_price_vol
 
 def req_remain_check(response):
     group, min, sec = response.headers['Remaining-Req'].split(';')
@@ -257,13 +264,13 @@ if __name__ == '__main__':
                 for unit in ['KRW', 'BTC']:
                     try:
                         market = unit+"-"+account['currency']
-                        if market in ['KRW-BTC', 'KRW-KRW']: continue
+                        if market in ['KRW-KRW']: continue
                         account_markets.add(market)
                         if market not in higher_price: higher_price[market] = 0
                         price_search_minute(market)
                         time.sleep(DELAY_TIME)
                     except:
-                        pass
+                        print('sell error', market)
             do_buy_list = []
             # 봉 검색
             for market in markets:
@@ -271,7 +278,7 @@ if __name__ == '__main__':
                 try:
                     if price_search_minute(market): do_buy_list.append(market)
                 except:
-                    print(ValueError)
+                    print('search error')
             print(do_buy_list)
             for market in do_buy_list:
                 try:
@@ -288,7 +295,7 @@ if __name__ == '__main__':
                     can_buy_money = (float(market_info['bid_account']['balance']) * TRADE_RATE) if market[:3]=='KRW' else (float(market_info['bid_account']['balance'])*.9)
                     if can_buy_money < float(market_info['market']['bid']['min_total']): continue    # 최소 매수 금액보다 적으면 넘김
                     order_info = order(ORDER(market=market, side=BUY, price=can_buy_money, ord_type=MARKET_PRICE_BUY))
-                    with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['price']}, BUY")
+                    with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['price']}, BUY\n")
                 except:
-                    print(ValueError)
+                    print('buy error')
         except:pass
