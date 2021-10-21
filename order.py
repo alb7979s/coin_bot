@@ -171,7 +171,8 @@ def volume_check(response, pivot):
 
     # print(market, float(infos[-1]['candle_acc_trade_price']))
 
-    increasing = True if (infos[0]['trade_price'] > infos[0]['opening_price']) else False
+    increasing = (True if (infos[0]['trade_price'] > infos[0]['opening_price']) else False) and \
+                 (True if (infos[0]['opening_price'] > infos[1]['opening_price']) else False)
     vol_list, price_list = [], []
     for info in infos:
         vol_list.append(info['candle_acc_trade_volume'])
@@ -184,16 +185,17 @@ def volume_check(response, pivot):
         print(market, higher_price[market], (higher_price[market] * LOWER_BOUND_RATE), recent_price)
         if (higher_price[market] - (higher_price[market] * LOWER_BOUND_RATE)) > recent_price:
             #sell
-            # time.sleep(DELAY_TIME)
+            time.sleep(DELAY_TIME)
             order_info = order(ORDER(market=market, side=SELL, volume=possible_order_search(market)['ask_account']['balance'], ord_type=MARKET_PRICE_SELL))
-            with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['locked']}, SELL\n")
+            # price가 none인데 주문 order로 가격 정보 구하고 팔아?
+            with open("trade_detail.txt", 'a') as f: f.write(f"{datetime.datetime.now().strftime('%H:%M:%S')}-{market}: {order_info['price']}, SELL\n")
             account_markets.remove(market)
         else:
             higher_price[market] = max(higher_price[market], *price_list)
     satisfy_price_vol = False
     # 평균 888,000,000 , 0.11
-    if market[:3] == 'KRW' and (float(infos[-1]['candle_acc_trade_price']) > 770000000): satisfy_price_vol = True
-    if market[:3] == 'BTC' and (float(infos[0]['candle_acc_trade_price']) > 0.3): satisfy_price_vol = True
+    if market[:3] == 'KRW' and (float(infos[-1]['candle_acc_trade_price']) > int(2e8)): satisfy_price_vol = True
+    if market[:3] == 'BTC' and (float(infos[0]['candle_acc_trade_price']) > 0.8): satisfy_price_vol = True
     return (recent_vol > (min_vol * pivot)) and increasing and satisfy_price_vol
 
 def req_remain_check(response):
@@ -268,7 +270,6 @@ if __name__ == '__main__':
                         account_markets.add(market)
                         if market not in higher_price: higher_price[market] = 0
                         price_search_minute(market)
-                        time.sleep(DELAY_TIME)
                     except:
                         print('sell error', market)
             do_buy_list = []
@@ -295,7 +296,7 @@ if __name__ == '__main__':
                     can_buy_money = (float(market_info['bid_account']['balance']) * TRADE_RATE) if market[:3]=='KRW' else (float(market_info['bid_account']['balance'])*.9)
                     if can_buy_money < float(market_info['market']['bid']['min_total']): continue    # 최소 매수 금액보다 적으면 넘김
                     order_info = order(ORDER(market=market, side=BUY, price=can_buy_money, ord_type=MARKET_PRICE_BUY))
-                    with open("trade_detail.txt", 'a') as f: f.write(f"{convert_time(datetime.datetime.now())}-{market}: {order_info['price']}, BUY\n")
+                    with open("trade_detail.txt", 'a') as f: f.write(f"{datetime.datetime.now().strftime('%H:%M:%S')}-{market}: {order_info['price']}, BUY\n")
                 except:
                     print('buy error')
         except:pass

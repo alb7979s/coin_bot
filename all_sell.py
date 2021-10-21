@@ -1,2 +1,2 @@
 from order import *
-all_sell()
+for i in range(2):all_sell()
